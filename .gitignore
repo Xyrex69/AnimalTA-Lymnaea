@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+
+# PyInstaller build artifacts
+build/
+dist/
+*.manifest
+pyinstaller_build.log
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# OS / editor
+Thumbs.db
+.DS_Store
+.idea/
+.vscode/
+/shelf/
+/workspace.xml

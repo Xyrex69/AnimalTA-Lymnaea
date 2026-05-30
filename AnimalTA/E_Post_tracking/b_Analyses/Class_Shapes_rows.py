@@ -1,0 +1,813 @@
+from tkinter import *
+import numpy as np
+import cv2
+from AnimalTA.A_General_tools import Function_draw_arenas, UserMessages, Color_settings
+from AnimalTA.E_Post_tracking.b_Analyses import Functions_Analyses_Speed as FAS
+
+#This file contains classes herited from Frame. They are Frames widgets which will show the characteristics of an element of interest (in the Analyses part) and allow to modify or delete it.
+
+class Row_Point(Frame):
+    '''
+    The widget for a point as an element of interest.
+    parent=the container of this frame
+    main=the panel in which the container is displayed. the main object is also related to the current video
+            > "self.main.Calc_speed.Areas" is a list of all the elements of interest
+    MArea=the identification number of the current element of interest
+    Shape=the characterstics of the point (Shape[0]=the kind of element (in that case, always a Point),Shape[1]=[Xcoord, Ycoord], Shape[2]=the radius of the circle around the point, Shape[3] the name of the element)
+    label=the name of the element (either PointX or any other name filled by the user
+    Ind=Which target is selected (the one used to display the metrics relative to that element of interest)
+    '''
+    def __init__(self, parent, main, boss, MArea, Shape, label, Ind, **kw):
+        Frame.__init__(self, parent, **kw)
+        self.config(**Color_settings.My_colors.Frame_Base)
+        self.MArea=MArea
+        self.boss=boss
+        self.main=main
+        self.Shape=Shape
+        self.Ind=Ind
+
+        self.Mean_dist=StringVar()#Averaged distance between the selected Ind and the Point of interest
+        self.Latency=StringVar()#Latency before the target approach at less than Shape[2] units from the point of interest
+        self.Prop_Time=StringVar()#Proportion of time the target spent at less than Shape[2] units from the point of interest
+        self.update_infos()#(Re)calculate the three values above
+
+        # Import the language settings
+        self.Language = StringVar()
+        f = open(UserMessages.resource_path("AnimalTA/Files/Language"), "r", encoding="utf-8")
+        self.Language.set(f.read())
+        self.LanguageO = self.Language.get()
+        f.close()
+        self.Messages = UserMessages.Mess[self.Language.get()]
+
+        #Display the name of the element of interest as an Entry (so it can be modified) along with a button to supress it.
+        regLab = (self.register(self.change_area_name), '%P', '%V')
+        Lab=Entry(self, validate="all", validatecommand=regLab, **Color_settings.My_colors.Entry_Base)
+        Lab.insert(0, label)
+        Lab.config()
+        Lab.grid(row=0, column=0, sticky="w")
+        supr_button=Button(self, text=self.Messages["Analyses_details_sp8"], command=self.supress, **Color_settings.My_colors.Button_Base)
+        supr_button.config(background=Color_settings.My_colors.list_colors["Danger"],fg=Color_settings.My_colors.list_colors["Fg_Danger"])
+        supr_button.grid(row=0, column=1, sticky="w")
+
+        #Display the averaged distance to the point
+        Title_mean_dist=Label(self, text=self.Messages["Analyses_details_sp_Lab1"], **Color_settings.My_colors.Label_Base)
+        Title_mean_dist.grid(row=1, column=1, sticky="w")
+        Frame_show=Frame(self, **Color_settings.My_colors.Frame_Base)
+        Frame_show.grid(row=2, column=1)
+        Lab_arr=Label(Frame_show, text=">", **Color_settings.My_colors.Label_Base)
+        Lab_arr.grid(row=0, column=0, sticky="w")
+        self.Lab_mean_dist=Label(Frame_show, textvariable=self.Mean_dist, **Color_settings.My_colors.Label_Base)
+        self.Lab_mean_dist.grid(row=0, column=1, sticky="w")
+        Label_unit1=Label(Frame_show, text=self.main.Vid.Scale[1], **Color_settings.My_colors.Label_Base)
+        Label_unit1.grid(row=0, column=2, sticky="w")
+
+        #Display the latency before the target approach at less than Shape[2] units from the point of interest
+        Title_Latency=Label(self, text=self.Messages["Analyses_details_sp_Lab2"], **Color_settings.My_colors.Label_Base)
+        Title_Latency.grid(row=4, column=1, sticky="w")
+        Inter_Check_entry = (self.register(self.Check_entry), '%P', '%V')
+
+        self.tmp_shape2 = DoubleVar()
+        self.tmp_shape2.set(Shape[2])
+        self.Scale_Radius=Entry(self, textvariable=self.tmp_shape2, validate="all", validatecommand=Inter_Check_entry, **Color_settings.My_colors.Entry_Base)#The user can change here the value of Shape[2]
+        self.Scale_Radius.grid(row=4, column=2, sticky="w")
+        self.tmp_shape2.trace('w', self.inter_draw)
+        Label_unit2=Label(self, text=self.main.Vid.Scale[1], **Color_settings.My_colors.Label_Base)
+        Label_unit2.grid(row=4, column=3, sticky="w")
+        Frame_show2=Frame(self, **Color_settings.My_colors.Frame_Base)
+        Frame_show2.grid(row=5, column=1)
+        Lab_arr2=Label(Frame_show2, text=">", **Color_settings.My_colors.Label_Base)
+        Lab_arr2.grid(row=0, column=0, sticky="w")
+        self.Lab_Latency=Label(Frame_show2, textvariable=self.Latency, **Color_settings.My_colors.Label_Base)
+        self.Lab_Latency.grid(row=0, column=1, sticky="w")
+        Label_unit3=Label(Frame_show2, text="sec", **Color_settings.My_colors.Label_Base)
+        Label_unit3.grid(row=0, column=2, sticky="w")
+
+        #Display the proportion of time the target spent at less than Shape[2] units from the point of interest
+        Title_Prop_Time=Label(self, text=self.Messages["Analyses_details_sp_Lab3"], **Color_settings.My_colors.Label_Base)
+        Title_Prop_Time.grid(row=6, column=1, sticky="w")
+        Title_Prop_Time_Val = Label(self, textvariable=self.Shape[2], **Color_settings.My_colors.Label_Base)
+        Title_Prop_Time_Val.grid(row=6, column=2, sticky="w")
+        Label_unit4=Label(self, text=self.main.Vid.Scale[1], **Color_settings.My_colors.Label_Base)
+        Label_unit4.grid(row=6, column=3, sticky="w")
+        Frame_show3=Frame(self, **Color_settings.My_colors.Frame_Base)
+        Frame_show3.grid(row=7, column=1)
+        Lab_arr3=Label(Frame_show3, text=">", **Color_settings.My_colors.Label_Base)
+        Lab_arr3.grid(row=0, column=0, sticky="w")
+        self.Lab_Prop_Time=Label(Frame_show3, textvariable=self.Prop_Time, **Color_settings.My_colors.Label_Base)
+        self.Lab_Prop_Time.grid(row=0, column=1, sticky="w")
+
+
+    def update_infos(self):
+        '''This function calculates the three measures of interest to be displayed:
+        self.Mean_dist: Averaged distance between the selected Ind and the Point of interest
+        self.Latency: Latency before the target approach at less than Shape[2] units from the point of interest
+        self.Prop_Time: Proportion of time the target spent at less than Shape[2] units from the point of interest
+
+        Each time, the value is rounded.
+        If the value cannot be calculated, the self.main.Calc_speed.calculate_dist_lat returns "NA".
+        '''
+        tmp_sh=self.Shape.copy()
+        tmp_Coos=self.main.Coos[self.Ind].copy()
+        tmp_Coos[np.where(tmp_Coos == -1000)] = np.nan
+        Dist_to, Inside = FAS.details_Point(tmp_Coos[:,0], tmp_Coos[:,1], tmp_sh, float(self.main.Vid.Scale[0]))
+        Mean_dist = np.nanmean(Dist_to)
+
+        if len(np.where(Inside > 0)[0]) > 0:
+            Latency=np.where(Inside>0)[0][0] / self.main.Vid.Frame_rate[1]
+            Inside_fixed=FAS.correct_Inside(Inside, 0, len(Inside))
+            Prop_Time= len(np.where(Inside_fixed > 0)[0]) / len(np.where(np.logical_not(np.isnan(Inside_fixed)))[0])
+        else:
+            Latency = "NA"
+            Prop_Time=0
+
+        new_vals = [Mean_dist, Latency, Prop_Time]
+
+        if new_vals[0]!="NA":
+            self.Mean_dist.set(round(new_vals[0],3))
+        else:
+            self.Mean_dist.set("NA")
+
+        if new_vals[1]!="NA":
+            self.Latency.set(str(round(new_vals[1], 3)))
+        else:
+            self.Latency.set("NA")
+
+        if new_vals[2] != "NA":
+            self.Prop_Time.set(str(round(new_vals[2], 3)))
+        else:
+            self.Prop_Time.set("NA")
+
+
+    def change_area_name(self, new_val, method):
+        '''
+        This function is called when the user want to change the name of the element. It allows to avoid that the same name is assigned twice
+        '''
+        auto_modif=False
+        if new_val in [shape[3] for shape in self.main.Vid.Analyses[1][self.MArea] if shape!=self.Shape]:
+            new_val=new_val+"_1"
+            auto_modif=True
+        self.Shape[3]=new_val
+        if method=="focusout" and auto_modif:
+            self.boss.show_results()
+
+        self.boss.modif_image()
+        return(True)
+
+
+    def supress(self):
+        '''
+        Supress this widget and supress the corresponding element of interest from the list of elements (self.main.Calc_speed.Areas)
+        '''
+        for shape in range(len(self.main.Vid.Analyses[1][self.MArea])):
+            if self.main.Vid.Analyses[1][self.MArea][shape] == self.Shape:
+                self.main.Vid.Analyses[1][self.MArea].pop(shape)
+                self.boss.show_results()
+                self.boss.modif_image()
+                self.update_infos()
+                self.boss.add_pt = [None]
+                self.boss.menubar.entryconfig(self.Messages["Analyses_details_sp_Menu0"], state="normal")
+                break
+        self.destroy()
+
+
+    def inter_draw(self, *args):
+        '''
+        This function is called when the value of Shape[2] is modified.
+        It updates the displayed frame (in that case, the area of the circle around the point of interest is modified)
+        '''
+        try:
+            if float(self.tmp_shape2.get()) >= 0:
+                self.Shape[2]=self.tmp_shape2.get()
+                self.boss.modif_image()
+                self.update_infos()
+        except Exception as e:
+            pass
+
+    def Check_entry(self, new_val, method):
+        '''
+        Avoid the user to add non-numeric or negative inputs for Shape[2]
+        '''
+        if new_val=="" and method!="focusout":
+            return True
+        elif new_val!="":
+            if method == "key":
+                try:
+                    if float(new_val) >= 0:
+                        return True
+                    else:
+                        return False
+                except Exception as e:
+                    print(e)
+                    return False
+            return True
+        else:
+            return False
+
+class Row_Line(Frame):
+    '''
+    The widget for a line as an element of interest.
+    parent=the container of this frame
+    main=the panel in which the container is displayed. the main object is also related to the current video
+            > "self.main.Calc_speed.Areas" is a list of all the elements of interest
+    MArea=the identification number of the current element of interest
+    Shape=the characterstics of the line (Shape[0]=the kind of element (in that case, always a Line),Shape[1]=[pt1, pt2], Shape[2]=None, Shape[3]=the name of the element)
+    label=the name of the element (either LineX or any other name filled by the user)
+    Ind=Which target is selected (the one used to display the metrics relative to that element of interest)
+    '''
+    def __init__(self, parent, main, boss, MArea, Shape, label, Ind, **kw):
+        Frame.__init__(self, parent, **kw)
+        self.config(**Color_settings.My_colors.Frame_Base)
+        self.MArea=MArea
+        self.boss=boss
+        self.main=main
+        self.Shape=Shape
+        self.Ind=Ind
+
+        self.Mean_dist=StringVar()#Average distance to the segment
+        self.update_infos()
+
+        # Import the language settings
+        self.Language = StringVar()
+        f = open(UserMessages.resource_path("AnimalTA/Files/Language"), "r", encoding="utf-8")
+        self.Language.set(f.read())
+        self.LanguageO = self.Language.get()
+        f.close()
+        self.Messages = UserMessages.Mess[self.Language.get()]
+
+        # Display the name of the element of interest as an Entry (so it can be modified) along with a button to supress it.
+        regLab = (self.register(self.change_area_name), '%P', '%V')
+        Lab=Entry(self, validate="all", validatecommand=regLab, **Color_settings.My_colors.Entry_Base)
+        Lab.insert(0, label)
+        Lab.config()
+        Lab.grid(row=0, column=0, sticky="w")
+        supr_button=Button(self, text=self.Messages["Analyses_details_sp8"], command=self.supress, **Color_settings.My_colors.Button_Base)
+        supr_button.config(background=Color_settings.My_colors.list_colors["Danger"],fg=Color_settings.My_colors.list_colors["Fg_Danger"])
+        supr_button.grid(row=0, column=1, sticky="w")
+
+        #Display the mean distance between the target and the segment
+        Title_mean_dist=Label(self, text=self.Messages["Analyses_details_sp_Lab4"], **Color_settings.My_colors.Label_Base)
+        Title_mean_dist.grid(row=1, column=1, sticky="w")
+        Frame_show=Frame(self, **Color_settings.My_colors.Frame_Base)
+        Frame_show.grid(row=2, column=1)
+        Lab_arr=Label(Frame_show, text=">", **Color_settings.My_colors.Label_Base)
+        Lab_arr.grid(row=0, column=0, sticky="w")
+        self.Lab_mean_dist=Label(Frame_show, textvariable=self.Mean_dist, **Color_settings.My_colors.Label_Base)
+        self.Lab_mean_dist.grid(row=0, column=1, sticky="w")
+        Label_unit1=Label(Frame_show, text=self.main.Vid.Scale[1], **Color_settings.My_colors.Label_Base)
+        Label_unit1.grid(row=0, column=2, sticky="w")
+
+
+
+    def update_infos(self):
+        '''This function calculates the three measures of interest to be displayed:
+        self.Mean_dist: Average distance to the segment
+        Each time, the value is rounded.
+        If the value cannot be calculated, the self.main.Calc_speed.calculate_dist_line returns "NA". Same for self.main.Calc_speed.calculate_intersect
+        '''
+        tmp_sh=self.Shape.copy()
+        tmp_Coos=self.main.Coos[self.Ind].copy()
+        tmp_Coos[np.where(tmp_Coos == -1000)] = np.nan
+        Dist_to_line = FAS.details_line(tmp_Coos[:,0], tmp_Coos[:,1], tmp_sh, float(self.main.Vid.Scale[0]))
+        new_vals = np.nanmean(Dist_to_line)
+        if new_vals=="NA":
+            self.Mean_dist.set("NA")
+        else:
+            self.Mean_dist.set(round(float(new_vals),3))
+
+
+    def supress(self):
+        '''
+        Supress this widget and supress the corresponding element of interest from the list of elements (self.main.Calc_speed.Areas)
+        '''
+        for shape in range(len(self.main.Vid.Analyses[1][self.MArea])):
+            if self.main.Vid.Analyses[1][self.MArea][shape] == self.Shape:
+                self.main.Vid.Analyses[1][self.MArea].pop(shape)
+                self.boss.show_results()
+                self.boss.modif_image()
+                self.update_infos()
+                self.boss.add_pt = [None]
+                self.boss.menubar.entryconfig(self.Messages["Analyses_details_sp_Menu0"], state="normal")
+                break
+        self.destroy()
+
+    def change_area_name(self, new_val, method):
+        '''
+        This function is called when the user want to change the name of the element. It allows to avoid that the same name is assigned twice
+        '''
+        auto_modif=False
+        if new_val in [shape[3] for shape in self.main.Vid.Analyses[1][self.MArea] if shape!=self.Shape]:
+            new_val=new_val+"_1"
+            auto_modif=True
+        self.Shape[3]=new_val
+        if method=="focusout" and auto_modif:
+            self.boss.show_results()
+
+        self.boss.modif_image()
+        return(True)
+
+class Row_All_Border(Frame):
+    '''
+    The widget for the borders of the arena as an element of interest.
+    parent=the container of this frame
+    main=the panel in which the container is displayed. the main object is also related to the current video
+            > "self.main.Calc_speed.Areas" is a list of all the elements of interest
+    MArea=the identification number of the current element of interest
+    Shape=the characterstics of the element (Shape[0]=the kind of element (in that case, always All_borders),Shape[1]=None, Shape[2]=The width of the border, Shape[3]=The name of the element)
+    label=the name of the element (either All_borderX or any other name filled by the user)
+    Ind=Which target is selected (the one used to display the metrics relative to that element of interest)
+    '''
+    def __init__(self, parent, main, boss,MArea, Shape, label, Ind, Area, **kw):
+        Frame.__init__(self, parent, **kw)
+        self.config(**Color_settings.My_colors.Frame_Base)
+        self.MArea=MArea
+        self.boss=boss
+        self.main=main
+        self.Shape=Shape
+        self.Ind=Ind
+        self.Area=Area
+
+        self.Arenas = Function_draw_arenas.get_arenas(self.main.Vid)
+
+
+        self.Mean_dist = StringVar()#Average distance between the target and the closest border
+        self.Prop_inside = StringVar()#Proportion of time the taregt spent inside the border's width
+        self.update_infos()
+
+        #Import language
+        self.Language = StringVar()
+        f = open(UserMessages.resource_path("AnimalTA/Files/Language"), "r", encoding="utf-8")
+        self.Language.set(f.read())
+        self.LanguageO = self.Language.get()
+        f.close()
+        self.Messages = UserMessages.Mess[self.Language.get()]
+
+        #Display the name of the element of interest as an Entry (so it can be modified) along with a button to supress it.
+        regLab = (self.register(self.change_area_name), '%P', '%V')
+        Lab=Entry(self, validate="all", validatecommand=regLab, **Color_settings.My_colors.Entry_Base)
+        Lab.insert(0, label)
+        Lab.config()
+        Lab.grid(row=0, column=0, sticky="w")
+        supr_button=Button(self, text=self.Messages["Analyses_details_sp8"], command=self.supress, **Color_settings.My_colors.Button_Base)
+        supr_button.config(background=Color_settings.My_colors.list_colors["Danger"],fg=Color_settings.My_colors.list_colors["Fg_Danger"])
+        supr_button.grid(row=0, column=1, sticky="w")
+
+        #Display the average distance to the closest border
+        Title_mean_dist=Label(self, text=self.Messages["Analyses_details_sp_Lab7"], **Color_settings.My_colors.Label_Base)
+        Title_mean_dist.grid(row=1, column=1, sticky="w")
+        Frame_show=Frame(self, **Color_settings.My_colors.Frame_Base)
+        Frame_show.grid(row=2, column=1)
+        Lab_arr=Label(Frame_show, text=">", **Color_settings.My_colors.Label_Base)
+        Lab_arr.grid(row=0, column=0, sticky="w")
+        self.Lab_mean_dist=Label(Frame_show, textvariable=self.Mean_dist, **Color_settings.My_colors.Label_Base)
+        self.Lab_mean_dist.grid(row=0, column=1, sticky="w")
+        Label_unit1=Label(Frame_show, text=self.main.Vid.Scale[1], **Color_settings.My_colors.Label_Base)
+        Label_unit1.grid(row=0, column=2, sticky="w")
+
+        #Display the proportion of time the target spent at less than Shape[2] units from the border
+        Title_prop_inside=Label(self, text=self.Messages["Analyses_details_sp_Lab8"], **Color_settings.My_colors.Label_Base)
+        Title_prop_inside.grid(row=3, column=1, sticky="w")
+        Inter_Check_entry = (self.register(self.Check_entry), '%P', '%V')
+
+        self.tmp_shape2=DoubleVar()
+        self.tmp_shape2.set(Shape[2])
+        self.Scale_Dist = Entry(self, textvariable=self.tmp_shape2, validate="all", validatecommand=Inter_Check_entry, **Color_settings.My_colors.Entry_Base)
+        self.Scale_Dist.grid(row=3, column=2, sticky="w")
+        self.tmp_shape2.trace('w', self.inter_draw)
+
+        Label_unit2=Label(self, text=self.main.Vid.Scale[1], **Color_settings.My_colors.Label_Base)
+        Label_unit2.grid(row=3, column=3, sticky="w")
+        Frame_show2=Frame(self, **Color_settings.My_colors.Frame_Base)
+        Frame_show2.grid(row=4, column=1)
+        Lab_arr2=Label(Frame_show2, text=">", **Color_settings.My_colors.Label_Base)
+        Lab_arr2.grid(row=0, column=0, sticky="w")
+        self.Lab_prop_inside=Label(Frame_show2, textvariable=self.Prop_inside, **Color_settings.My_colors.Label_Base)
+        self.Lab_prop_inside.grid(row=0, column=1, sticky="w")
+
+    def inter_draw(self, *args):
+        '''
+        This function is called when the value of Shape[2] is modified.
+        It updates the displayed frame (in that case, the area of the circle around the point of interest is modified)
+        '''
+        try:
+            if float(self.tmp_shape2.get()) >= 0:
+                self.Shape[2]=self.tmp_shape2.get()
+                self.boss.modif_image()
+                self.update_infos()
+        except Exception as e:
+            pass
+
+
+    def Check_entry(self, new_val, method):
+        if new_val == "" and method != "focusout":
+            return True
+        elif new_val != "":
+            if method == "key":
+                try:
+                    if float(new_val) >= 0:
+                        return True
+                    else:
+                        return False
+                except Exception as e:
+                    print(e)
+                    return False
+            return True
+        else:
+            return False
+
+
+    def update_infos(self):
+        '''This function calculates the two measures of interest to be displayed:
+        self.Mean_dist: Average distance to the closest border
+        self.Prop_inside: Proportion of time the target spent at less than Shape[2] units from the borders
+
+        Each time, the value is rounded.
+        If the value cannot be calculated, the self.main.Calc_speed.calculate_dist_border returns "NA".
+        '''
+
+        tmp_sh=self.Shape.copy()
+        tmp_Coos=self.main.Coos[self.Ind].copy()
+        tmp_Coos[np.where(tmp_Coos == -1000)] = np.nan
+        Dist_to, Inside = FAS.details_All_borders(tmp_Coos[:,0], tmp_Coos[:,1], tmp_sh, self.Arenas[self.Area] , float(self.main.Vid.Scale[0]))
+        Mean_dist = np.nanmean(Dist_to)
+
+        if len(np.where(Inside > 0)[0]) > 0:
+            Inside_fixed = FAS.correct_Inside(Inside, 0, len(Inside))
+            Prop_Time = len(np.where(Inside_fixed > 0)[0]) / len(np.where(np.logical_not(np.isnan(Inside_fixed)))[0])
+        else:
+            Prop_Time = 0
+        new_vals = [Mean_dist, Prop_Time]
+
+
+        if new_vals[0]=="NA":
+            self.Mean_dist.set(new_vals[0])
+        else:
+            self.Mean_dist.set(round(new_vals[0],3))
+
+        if new_vals[1] == "NA":
+            self.Prop_inside.set(new_vals[1])
+        else:
+            self.Prop_inside.set(round(new_vals[1], 3))
+
+
+
+    def supress(self):
+        '''
+        Supress this widget and supress the corresponding element of interest from the list of elements (self.main.Calc_speed.Areas)
+        '''
+        for shape in range(len(self.main.Vid.Analyses[1][self.MArea])):
+            if self.main.Vid.Analyses[1][self.MArea][shape] == self.Shape:
+                self.main.Vid.Analyses[1][self.MArea].pop(shape)
+                self.boss.show_results()
+                self.boss.modif_image()
+                self.update_infos()
+                self.boss.add_pt = [None]
+                self.boss.menubar.entryconfig(self.Messages["Analyses_details_sp_Menu0"], state="normal")
+                break
+        self.destroy()
+
+    def change_area_name(self, new_val, method):
+        '''
+        This function is called when the user want to change the name of the element. It allows to avoid that the same name is assigned twice
+        '''
+
+        auto_modif=False
+        if new_val in [shape[3] for shape in self.main.Vid.Analyses[1][self.MArea] if shape!=self.Shape]:
+            new_val=new_val+"_1"
+            auto_modif=True
+        self.Shape[3]=new_val
+        if method=="focusout" and auto_modif:
+            self.boss.show_results()
+
+        self.boss.modif_image()
+        return (True)
+
+
+class Row_Border(Frame):
+    '''
+    The widget for one or more borders of the arena as an element of interest.
+    parent=the container of this frame
+    main=the panel in which the container is displayed. the main object is also related to the current video
+            > "self.main.Calc_speed.Areas" is a list of all the elements of interest
+    MArea=the identification number of the current element of interest
+    Shape=the characterstics of the element (Shape[0]=the kind of element (in that case, always Borders),Shape[1]= a list of all the segments of border considered: [[Seg1pt1,Seg1pt2],[Seg2pt1,Seg2pt2],[Seg3pt1,Seg2pt2]...], Shape[2]=The width of the borders, Shape[3]=The name of the element)
+    label=the name of the element (either BorderX or any other name filled by the user)
+    Ind=Which target is selected (the one used to display the metrics relative to that element of interest)
+    '''
+    def __init__(self, parent, main, boss, MArea, Shape, label, Ind, **kw):
+        Frame.__init__(self, parent, **kw)
+        self.config(**Color_settings.My_colors.Frame_Base)
+        self.MArea=MArea
+        self.boss=boss
+        self.main=main
+        self.Shape=Shape
+        self.Ind=Ind
+
+        self.Mean_dist = StringVar()# Average distance between the target and the closest selected border
+        self.Prop_inside = StringVar()# Proportion of time the target spent inside the selected border's width
+        self.Lat_inside = StringVar()# Latency to enter inside one of the selected border's width
+        self.update_infos()
+
+        #Import language
+        self.Language = StringVar()
+        f = open(UserMessages.resource_path("AnimalTA/Files/Language"), "r", encoding="utf-8")
+        self.Language.set(f.read())
+        self.LanguageO = self.Language.get()
+        f.close()
+        self.Messages = UserMessages.Mess[self.Language.get()]
+
+        #Display the name of the element of interest as an Entry (so it can be modified) along with a button to supress it.
+        regLab = (self.register(self.change_area_name), '%P', '%V')
+        Lab=Entry(self, validate="all", validatecommand=regLab, **Color_settings.My_colors.Entry_Base)
+        Lab.insert(0, label)
+        Lab.config()
+        Lab.grid(row=0, column=0, sticky="w")
+        supr_button=Button(self, text=self.Messages["Analyses_details_sp8"], command=self.supress, **Color_settings.My_colors.Button_Base)
+        supr_button.config(background=Color_settings.My_colors.list_colors["Danger"],fg=Color_settings.My_colors.list_colors["Fg_Danger"])
+        supr_button.grid(row=0, column=1, sticky="w")
+
+        #Display the average distance to the closest selected border
+        Title_mean_dist=Label(self, text=self.Messages["Analyses_details_sp_Lab9"], **Color_settings.My_colors.Label_Base)
+        Title_mean_dist.grid(row=1, column=1, sticky="w", columnspan=3)
+        Frame_show=Frame(self, **Color_settings.My_colors.Frame_Base)
+        Frame_show.grid(row=2, column=1)
+        Lab_arr=Label(Frame_show, text=">", **Color_settings.My_colors.Label_Base)
+        Lab_arr.grid(row=0, column=0, sticky="w")
+        self.Lab_mean_dist=Label(Frame_show, textvariable=self.Mean_dist, **Color_settings.My_colors.Label_Base)
+        self.Lab_mean_dist.grid(row=0, column=1, sticky="w")
+        Label_unit1=Label(Frame_show, text=self.main.Vid.Scale[1], **Color_settings.My_colors.Label_Base)
+        Label_unit1.grid(row=0, column=2, sticky="w")
+
+        #Display the proportion of time the target spent at less than Shape[2] units from one of the selected borders
+        Title_prop_inside=Label(self, text=self.Messages["Analyses_details_sp_Lab8"], **Color_settings.My_colors.Label_Base)
+        Title_prop_inside.grid(row=3, column=1, sticky="w")
+        Inter_Check_entry = (self.register(self.Check_entry), '%P', '%V')
+
+        self.tmp_shape2=DoubleVar()
+        self.tmp_shape2.set(Shape[2])
+        self.Scale_Dist = Entry(self, textvariable=self.tmp_shape2, validate="all", validatecommand=Inter_Check_entry, **Color_settings.My_colors.Entry_Base)
+        self.Scale_Dist.grid(row=3, column=2, sticky="w")
+        self.tmp_shape2.trace('w', self.inter_draw)
+        Label_unit2=Label(self, text=self.main.Vid.Scale[1], **Color_settings.My_colors.Label_Base)
+        Label_unit2.grid(row=3, column=3, sticky="w")
+        Frame_show2=Frame(self, **Color_settings.My_colors.Frame_Base)
+        Frame_show2.grid(row=4, column=1)
+        Lab_arr2=Label(Frame_show2, text=">", **Color_settings.My_colors.Label_Base)
+        Lab_arr2.grid(row=0, column=0, sticky="w")
+        self.Lab_prop_inside=Label(Frame_show2, textvariable=self.Prop_inside, **Color_settings.My_colors.Label_Base)
+        self.Lab_prop_inside.grid(row=0, column=1, sticky="w")
+
+        #Display the latency before the target entered at less than Shape[2] units from one of the selected borders
+        Title_lat_inside=Label(self, text=self.Messages["Analyses_details_sp_Lab10"], **Color_settings.My_colors.Label_Base)
+        Title_lat_inside.grid(row=5, column=1, sticky="w")
+        self.Scale_Dist2 = Label(self, textvariable=self.Shape[2], **Color_settings.My_colors.Label_Base)
+        self.Scale_Dist2.grid(row=5, column=2, sticky="w")
+        Label_unit3=Label(self, text=self.main.Vid.Scale[1], **Color_settings.My_colors.Label_Base)
+        Label_unit3.grid(row=5, column=3, sticky="w")
+        Frame_show3=Frame(self, **Color_settings.My_colors.Frame_Base)
+        Frame_show3.grid(row=6, column=1)
+        Lab_arr3=Label(Frame_show3, text=">", **Color_settings.My_colors.Label_Base)
+        Lab_arr3.grid(row=0, column=0, sticky="w")
+        self.Lab_lat_inside=Label(Frame_show3, textvariable=self.Lat_inside, **Color_settings.My_colors.Label_Base)
+        self.Lab_lat_inside.grid(row=0, column=1, sticky="w")
+        Label_unit4=Label(Frame_show3, text="sec", **Color_settings.My_colors.Label_Base)
+        Label_unit4.grid(row=0, column=2, sticky="w")
+
+    def inter_draw(self, *args):
+        '''
+        This function is called when the value of Shape[2] is modified.
+        It updates the displayed frame (in that case, the area of the circle around the point of interest is modified)
+        '''
+        try:
+            if float(self.tmp_shape2.get()) >= 0:
+                self.Shape[2]=self.tmp_shape2.get()
+                self.boss.modif_image()
+                self.update_infos()
+        except Exception as e:
+            pass
+
+
+    def Check_entry(self, new_val, method):
+        '''
+        Avoid the user to add non-numeric or negative inputs for Shape[2]
+        '''
+        if new_val == "" and method != "focusout":
+            return True
+        elif new_val != "":
+            if method == "key":
+                try:
+                    if float(new_val) >= 0:
+                        return True
+                    else:
+                        return False
+                except Exception as e:
+                    print(e)
+                    return False
+            return True
+        else:
+            return False
+
+
+    def update_infos(self):
+        '''This function calculates the three measures of interest to be displayed:
+        self.Mean_dist: Averaged distance between the selected Ind and the closest selected border
+        self.Latency: Latency before the target approach at less than Shape[2] units from one of the selected borders
+        self.Prop_Time: Proportion of time the target spent at less than Shape[2] units from one of the selected borders
+
+        Each time, the value is rounded.
+        If the value cannot be calculated, the self.main.Calc_speed.calculate_dist_sep_border returns "NA".
+        '''
+        tmp_sh = self.Shape.copy()
+        tmp_Coos = self.main.Coos[self.Ind].copy()
+        tmp_Coos[np.where(tmp_Coos == -1000)] = np.nan
+        Dist_to, Inside = FAS.details_Borders(tmp_Coos[:, 0], tmp_Coos[:, 1], tmp_sh,
+                                                                   float(self.main.Vid.Scale[0]))
+        Mean_dist = np.nanmean(Dist_to)
+
+        if len(np.where(Inside > 0)[0]) > 0:
+            Latency=np.where(Inside>0)[0][0] / self.main.Vid.Frame_rate[1]
+            Inside_fixed = FAS.correct_Inside(Inside, 0, len(Inside))
+            Prop_Time = len(np.where(Inside_fixed > 0)[0]) / len(np.where(np.logical_not(np.isnan(Inside_fixed)))[0])
+        else:
+            Prop_Time = 0
+            Latency="NA"
+
+        new_vals = [Mean_dist, Prop_Time, Latency]
+
+
+        if new_vals[0]=="NA":
+            self.Mean_dist.set(new_vals[0])
+        else:
+            self.Mean_dist.set(round(new_vals[0],3))
+
+        if new_vals[1] == "NA":
+            self.Prop_inside.set(new_vals[1])
+        else:
+            self.Prop_inside.set(round(new_vals[1], 3))
+
+        if new_vals[2] == "NA":
+            self.Lat_inside.set(new_vals[2])
+        else:
+            self.Lat_inside.set(round(new_vals[2], 3))
+
+
+    def supress(self):
+        '''
+        Supress this widget and supress the corresponding element of interest from the list of elements (self.main.Calc_speed.Areas)
+        '''
+        for shape in range(len(self.main.Vid.Analyses[1][self.MArea])):
+            if self.main.Vid.Analyses[1][self.MArea][shape] == self.Shape:
+                self.main.Vid.Analyses[1][self.MArea].pop(shape)
+                self.boss.show_results()
+                self.boss.modif_image()
+                self.update_infos()
+                self.boss.add_pt = [None]
+                self.boss.menubar.entryconfig(self.Messages["Analyses_details_sp_Menu0"], state="normal")
+                break
+        self.destroy()
+
+    def change_area_name(self, new_val, method):
+        '''
+        This function is called when the user want to change the name of the element. It allows to avoid that the same name is assigned twice
+        '''
+        auto_modif=False
+        if new_val in [shape[3] for shape in self.main.Vid.Analyses[1][self.MArea] if shape!=self.Shape]:
+            new_val=new_val+"_1"
+            auto_modif=True
+        self.Shape[3]=new_val
+        if method=="focusout" and auto_modif:
+            self.boss.show_results()
+
+        self.boss.modif_image()
+        return(True)
+
+class Row_Shape(Frame):
+    '''
+    The widget for one shape as an element of interest.
+    parent=the container of this frame
+    main=the panel in which the container is displayed. the main object is also related to the current video
+            > "self.main.Calc_speed.Areas" is a list of all the elements of interest
+    MArea=the identification number of the current element of interest
+    Shape=the characteristics of the element (Shape[0]=the kind of element (in that case, Ellipse, Rectangle or Poly),Shape[1]= a list of all the corners: [pt1,pt2,pt3...], Shape[2]=None, Shape[3]=The name of the element)
+    label=the name of the element (either EllipseX, RectangleX, PolyX or any other name filled by the user)
+    Ind=Which target is selected (the one used to display the metrics relative to that element of interest)
+    '''
+    def __init__(self, parent, main, boss, MArea, Shape, label, Ind, Area, **kw):
+        Frame.__init__(self, parent, **kw)
+        self.config(**Color_settings.My_colors.Frame_Base)
+        self.MArea=MArea
+        self.boss=boss
+        self.main=main
+        self.Shape=Shape
+        self.Ind=Ind
+        self.Area =Area
+
+        self.Arenas = Function_draw_arenas.get_arenas(self.main.Vid)
+
+        self.Prop_inside = StringVar()#Proportion of time the target spent inside the element's shape
+        self.Lat_inside = StringVar()#Latency before the target enter inside the shape
+        self.update_infos()
+
+        #Import the language
+        self.Language = StringVar()
+        f = open(UserMessages.resource_path("AnimalTA/Files/Language"), "r", encoding="utf-8")
+        self.Language.set(f.read())
+        self.LanguageO = self.Language.get()
+        f.close()
+        self.Messages = UserMessages.Mess[self.Language.get()]
+
+        # Display the name of the element of interest as an Entry (so it can be modified) along with a button to supress it.
+        regLab = (self.register(self.change_area_name), '%P', '%V')
+        Lab=Entry(self, validate="all", validatecommand=regLab)
+        Lab.insert(0, label)
+        Lab.config()
+        Lab.grid(row=0, column=0, sticky="w")
+        supr_button = Button(self, text=self.Messages["Analyses_details_sp8"], command=self.supress, **Color_settings.My_colors.Button_Base)
+        supr_button.config(background=Color_settings.My_colors.list_colors["Danger"],fg=Color_settings.My_colors.list_colors["Fg_Danger"])
+        supr_button.grid(row=0, column=1, sticky="w")
+
+        # Display the proportion of time the target spent inside the element's shape.
+        Title_prop_inside=Label(self, text=self.Messages["Analyses_details_sp_Lab11"], **Color_settings.My_colors.Label_Base)
+        Title_prop_inside.grid(row=1, column=1, sticky="w")
+        Frame_show=Frame(self, **Color_settings.My_colors.Frame_Base)
+        Frame_show.grid(row=2, column=1)
+        Lab_arr=Label(Frame_show, text=">", **Color_settings.My_colors.Label_Base)
+        Lab_arr.grid(row=0, column=0, sticky="w")
+        self.Lab_prop_inside=Label(Frame_show, textvariable=self.Prop_inside, **Color_settings.My_colors.Label_Base)
+        self.Lab_prop_inside.grid(row=0, column=1, sticky="w")
+
+        # Display the latency before the target enter inside the shape.
+        Title_lat_inside=Label(self, text=self.Messages["Analyses_details_sp_Lab12"], **Color_settings.My_colors.Label_Base)
+        Title_lat_inside.grid(row=3, column=1, sticky="w")
+        Frame_show2=Frame(self, **Color_settings.My_colors.Frame_Base)
+        Frame_show2.grid(row=4, column=1)
+        Lab_arr3=Label(Frame_show2, text=">", **Color_settings.My_colors.Label_Base)
+        Lab_arr3.grid(row=0, column=0, sticky="w")
+        self.Lab_lat_inside=Label(Frame_show2, textvariable=self.Lat_inside, **Color_settings.My_colors.Label_Base)
+        self.Lab_lat_inside.grid(row=0, column=1, sticky="w")
+        Label_unit4=Label(Frame_show2, text="sec", **Color_settings.My_colors.Label_Base)
+        Label_unit4.grid(row=0, column=2, sticky="w")
+
+    def update_infos(self):
+        '''This function calculates the three measures of interest to be displayed:
+        self.Prop_inside: Proportion of time the target spent inside the element's shape
+        self.Lat_inside: Latency before the target enter inside the shape.
+
+        Each time, the value is rounded.
+        If the value cannot be calculated, the self.main.Calc_speed.calculate_dist_lat returns "NA".
+        '''
+
+        tmp_sh = self.Shape.copy()
+        tmp_Coos = self.main.Coos[self.Ind].copy()
+        tmp_Coos[np.where(tmp_Coos == -1000)] = np.nan
+        Dist_to, Inside = FAS.details_shape(tmp_Coos[:, 0], tmp_Coos[:, 1], tmp_sh, float(self.main.Vid.Scale[0]), Vid=self.main.Vid, Arena=self.Arenas[self.Area])
+
+        if len(np.where(Inside > 0)[0]) > 0:
+            Latency=np.where(Inside>0)[0][0] / self.main.Vid.Frame_rate[1]
+            Inside_fixed = FAS.correct_Inside(Inside, 0, len(Inside))
+            Prop_Time = len(np.where(Inside_fixed > 0)[0]) / len(np.where(np.logical_not(np.isnan(Inside_fixed)))[0])
+        else:
+            Prop_Time = 0
+            Latency="NA"
+        new_vals = [Prop_Time, Latency]
+
+
+        if new_vals[0] == "NA":
+            self.Prop_inside.set(new_vals[0])
+        else:
+            self.Prop_inside.set(round(new_vals[0], 3))
+
+        if new_vals[1] == "NA":
+            self.Lat_inside.set(new_vals[1])
+        else:
+            self.Lat_inside.set(round(new_vals[1], 3))
+
+
+    def supress(self):
+        '''
+        Supress this widget and supress the corresponding element of interest from the list of elements (self.main.Calc_speed.Areas)
+        '''
+        for shape in range(len(self.main.Vid.Analyses[1][self.MArea])):
+            if self.main.Vid.Analyses[1][self.MArea][shape] == self.Shape:
+                self.main.Vid.Analyses[1][self.MArea].pop(shape)
+                self.boss.show_results()
+                self.boss.modif_image()
+                self.update_infos()
+                self.boss.add_pt = [None]
+                self.boss.menubar.entryconfig(self.Messages["Analyses_details_sp_Menu0"], state="normal")
+                break
+        self.destroy()
+
+    def change_area_name(self, new_val, method):
+        '''
+        This function is called when the user want to change the name of the element. It allows to avoid that the same name is assigned twice
+        '''
+        auto_modif=False
+        if new_val in [shape[3] for shape in self.main.Vid.Analyses[1][self.MArea] if shape!=self.Shape]:
+            new_val=new_val+"_1"
+            auto_modif=True
+        self.Shape[3]=new_val
+        if method=="focusout" and auto_modif:
+            self.boss.show_results()
+
+        self.boss.modif_image()
+        return(True)

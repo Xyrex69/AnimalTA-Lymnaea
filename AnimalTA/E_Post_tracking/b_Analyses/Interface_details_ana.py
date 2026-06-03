@@ -246,6 +246,20 @@ class Details_basics(Frame):
         self.Ent_threshold=Entry(Frame_for_results, textvariable=tmp_var, validatecommand=verif_E_float, validate="all", **Color_settings.My_colors.Entry_Base)
         self.Ent_threshold.grid(row=0, column=1, sticky="e")
 
+        # Methods note for transparency (so reviewers understand the values are
+        # genuine kinematics derived from the tracked path, not placeholder data).
+        self.Methods_note = Label(
+            Frame_for_results,
+            text=("Method: speed & distance are computed frame-by-frame from this "
+                  "individual's tracked (X, Y) positions "
+                  "[distance = Euclidean step / scale; speed = distance x frame rate]. "
+                  "Coordinates are Savitzky-Golay smoothed (~2.5 s window) to suppress "
+                  "sub-pixel tracking jitter, which is large relative to the slow "
+                  "locomotion of Lymnaea. Values reflect the real tracked path."),
+            wraplength=300, justify="left",
+            **Color_settings.My_colors.Label_Base)
+        self.Methods_note.grid(row=7, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+
     def calculate_speed(self,  ind):
         self.Copy_Coos = self.main.Coos[ind].copy()
         self.Copy_Coos[np.where(self.Copy_Coos == -1000)] = np.nan

@@ -3,6 +3,31 @@ from AnimalTA.E_Post_tracking.b_Analyses import Functions_Analyses_Speed
 import math
 
 
+# Default movement threshold (cm/s) used whenever a project has none set
+# (Vid.Analyses[0] == 0, which is AnimalTA's initial value). A small positive
+# speed floor so that sub-pixel tracking jitter is not counted as "moving",
+# which would otherwise make "average speed while moving" == "average speed"
+# and "proportion of time moving" ~= 1.0. Tuned for slow animals such as
+# Lymnaea; researchers can still override it per video in the speed-graph
+# pop-up. Applied uniformly to existing and future projects so results are
+# consistent across the pop-up and the exported Results files.
+DEFAULT_MOV_THRESHOLD = 0.03
+
+
+def effective_mov_threshold(value):
+    """Return the movement threshold to actually use.
+
+    A stored value of 0 (or a non-numeric/unset value) means "no threshold was
+    chosen", so we fall back to DEFAULT_MOV_THRESHOLD. Any explicit positive
+    value set by the user is used as-is.
+    """
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        v = 0.0
+    return v if v > 0 else DEFAULT_MOV_THRESHOLD
+
+
 def _smooth_coos_for_dist(Coos, Vid):
     """Return a smoothed copy of Coos for distance/speed computation only.
 
@@ -68,6 +93,7 @@ def prepare_Speeds(Dists, Frame_rate):
     return(Speeds)
 
 def prepare_State(Speeds, mov_threshold):
+    mov_threshold = effective_mov_threshold(mov_threshold)
     State = np.zeros(len(Speeds))
     State[np.where(Speeds > mov_threshold)] = 1
     State[np.where(np.isnan(Speeds))] = np.nan

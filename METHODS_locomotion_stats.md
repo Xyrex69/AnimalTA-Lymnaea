@@ -58,10 +58,25 @@ centimetres using the calibration `scale` (pixels per cm), and let
 ## Movement threshold
 
 `State_t` (moving vs. resting) depends on the speed threshold for the video
-(`Vid.Analyses[0]`). With a threshold of `0`, every frame with any displacement
-counts as "moving", so "proportion of time moving" approaches 1.0. Set a small
-positive threshold (cm/s) to define a biologically meaningful moving/resting
-split for *Lymnaea*.
+(`Vid.Analyses[0]`). A threshold of `0` would count every frame with any
+displacement as "moving", so "proportion of time moving" approaches 1.0 and
+"average speed while moving" collapses onto "average speed".
+
+To avoid this, AnimalTA now applies a **default movement threshold of
+`DEFAULT_MOV_THRESHOLD = 0.03` cm/s** whenever a project has none set
+(`Vid.Analyses[0] == 0`). This default is defined once in
+`Functions_trajectory_summarise.py` and applied uniformly by both the analysis
+pop-up (`Details_basics`) and the exported `Results` files, so existing and
+future projects behave consistently without per-project editing. It is a small
+speed floor that excludes sub-pixel tracking jitter, chosen for the slow
+locomotion of *Lymnaea*. Researchers can override it for any video by typing a
+value in the speed-graph pop-up (or dragging the threshold line); any explicit
+positive value is used as-is.
+
+Example (`verosnails`, "Snail Video", individual 0): at the 0.03 cm/s default,
+proportion moving = 0.12, average speed = 0.014 cm/s, average speed while
+moving = 0.057 cm/s — a clear moving/resting separation, versus identical
+columns at threshold 0.
 
 ## Reproducibility
 

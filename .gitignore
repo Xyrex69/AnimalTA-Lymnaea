@@ -8,7 +8,7 @@ __pycache__/
 build/
 dist/
 *.manifest
-pyinstaller_build.log
+pyinstaller_build*.log
 
 # Virtual envs
 .venv/

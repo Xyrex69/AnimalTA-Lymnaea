@@ -3,6 +3,7 @@ from tkinter import *
 from AnimalTA.A_General_tools import Class_Lecteur, Function_draw_arenas, UserMessages, User_help, Class_loading_Frame, Color_settings, Small_info
 from AnimalTA.E_Post_tracking.b_Analyses import Class_Shapes_rows, Interface_border_portion, Interface_extend_heatmap, Functions_Analyses_Speed, Interface_heatmaps
 from AnimalTA.E_Post_tracking.b_Analyses.Elements_management import Interface_extend_elements, Interface_auto_detect_elements
+from AnimalTA.E_Post_tracking.b_Analyses.Functions_analyses.Functions_trajectory_summarise import effective_mov_threshold
 import numpy as np
 import PIL
 import math
@@ -73,6 +74,15 @@ class Details_basics(Frame):
         self.grid(sticky="nsew")
         self.ready=False
         self.parent.attributes('-toolwindow', True)
+
+        # Apply the project-wide default movement threshold when none is set
+        # (Analyses[0] == 0, AnimalTA's initial value). This makes the
+        # moving/resting split meaningful for every project, existing and new,
+        # and keeps the speed-graph threshold line, the threshold entry box, the
+        # displayed statistics, and the exported Results files all consistent.
+        # Researchers can still change it via the entry/graph below.
+        if not float(self.main.Vid.Analyses[0]) > 0:
+            self.main.Vid.Analyses[0] = effective_mov_threshold(self.main.Vid.Analyses[0])
 
         Grid.columnconfigure(self.parent, 0, weight=1)
         Grid.rowconfigure(self.parent, 0, weight=1)
@@ -255,7 +265,10 @@ class Details_basics(Frame):
                   "[distance = Euclidean step / scale; speed = distance x frame rate]. "
                   "Coordinates are Savitzky-Golay smoothed (~2.5 s window) to suppress "
                   "sub-pixel tracking jitter, which is large relative to the slow "
-                  "locomotion of Lymnaea. Values reflect the real tracked path."),
+                  "locomotion of Lymnaea. 'Moving' frames are those above the speed "
+                  "threshold (currently {:.3g} cm/s; default applied when none is set). "
+                  "Values reflect the real tracked path.".format(
+                      float(self.main.Vid.Analyses[0]))),
             wraplength=300, justify="left",
             **Color_settings.My_colors.Label_Base)
         self.Methods_note.grid(row=7, column=0, columnspan=2, sticky="ew", pady=(8, 0))

@@ -47,11 +47,4 @@ pip install pyinstaller
 pyinstaller AnimalTA.spec
 ```
 
-## Citation
 
-If you use AnimalTA for your research, please cite the original:
-
-Chiara, V., & Kim, S.-Y. (2023). AnimalTA: A highly flexible and easy-to-use
-program for tracking and analyzing animal movement in different environments.
-*Methods in Ecology and Evolution*, 14, 1699–1707.
-https://besjournals.onlinelibrary.wiley.com/doi/10.1111/2041-210X.14115

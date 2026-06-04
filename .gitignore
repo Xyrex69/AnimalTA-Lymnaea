@@ -10,6 +10,11 @@ dist/
 *.manifest
 pyinstaller_build*.log
 
+# Bundled ffmpeg binary — required for video conversion but too large for git.
+# Builders: place a Windows ffmpeg.exe (with the libxvid encoder) here before
+# running `pyinstaller AnimalTA.spec`. The published Release exe already includes it.
+AnimalTA/Files/ffmpeg/ffmpeg.exe
+
 # Virtual envs
 .venv/
 venv/
